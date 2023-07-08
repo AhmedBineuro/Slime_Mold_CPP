@@ -1,7 +1,8 @@
 #include "core.h"
 #include "dvd.h"
 #include "agent.h"
-#define THREAD_COUNT 6
+#define THREAD_COUNT 8
+Color pheromoes[4] = {Color::Blue, Color::Red, Color::Green, Color::Yellow};
 string WINDOW_TITLE;
 Image currentFrameImage;
 bool run;
@@ -10,45 +11,47 @@ Vector2f oldmousePos;
 Clock fps_clock;
 Time deltaTime;
 Time fpsUpdateTime = seconds(1.0f);
+pthread_t threadPool[THREAD_COUNT];
 Time elapsedUpdateTime = Time::Zero;
 RectangleShape evaporation_filter;
 Shader diffusion_shader;
 RenderWindow window(VideoMode(WINDOW_WIDTH, WINDOW_HEIGHT), WINDOW_TITLE);
+VertexArray agentCells;
+agent agents[AGENT_COUNT];
 void init();
-void *updateThreaded(void *threadIndex);
+void *moveThreaded(void *threadIndex);
 int main()
 {
-    srand(time(0));
-    agent agents[AGENT_COUNT];
+    srand(time(NULL));
+    agentCells = VertexArray(Points, AGENT_COUNT);
     // for (int i = 0; i < AGENT_COUNT / 3; i++)
     // {
     //     agents[i] = agent();
-    //     agents[i].setPheromoneChannel('R');
+    //     agents[i].setPheromoneChannel(&pheromoes[0]);
     // }
-    // for (int i = AGENT_COUNT / 3; i < (2 * AGENT_COUNT / 3); i++)
+    // for (int i = AGENT_COUNT / 3; i < AGENT_COUNT * (2.f / 3.f); i++)
     // {
     //     agents[i] = agent();
-    //     agents[i].setPheromoneChannel('B');
+    //     agents[i].setPheromoneChannel(&pheromoes[1]);
     // }
-    // for (int i = (2 * AGENT_COUNT / 3); i < AGENT_COUNT; i++)
+    // for (int i = AGENT_COUNT * (2.f / 3.f); i < AGENT_COUNT; i++)
     // {
     //     agents[i] = agent();
-    //     agents[i].setPheromoneChannel('G');
+    //     agents[i].setPheromoneChannel(&pheromoes[2]);
     // }
     for (int i = 0; i < AGENT_COUNT; i++)
     {
         agents[i] = agent();
-        agents[i].setPheromoneChannel('W');
+        agents[i].setPheromoneChannel(&pheromoes[3]);
+    }
+    for (int i = 0; i < AGENT_COUNT; i++)
+    {
+        agents[i].linkVertex(&(agentCells[i]));
     }
     init();
     window.setPosition(Vector2(0, 0));
-    // DVD demo code
     bool hold = false;
     unsigned int frameCount = 0;
-    // dvd d = dvd();
-    // dvd ds[DVD_COUNT];
-    // for (int i = 0; i < DVD_COUNT; i++)
-    //     ds[i] = dvd();
     /////////////////
     while (run)
     {
@@ -97,36 +100,38 @@ int main()
             frameCount = 0;
             elapsedUpdateTime -= fpsUpdateTime;
         }
-        // if (!hold)
-        // {
-        //     // d.move();
-        //     for (int i = 0; i < DVD_COUNT; i++)
-        //         ds[i].move();
-        // }
-        // else
-        // {
-        //     oldmousePos = Vector2f(Mouse::getPosition().x, Mouse::getPosition().y);
-        //     // d.setPosition(Mouse::getPosition());
-        // }
-        // d.draw(currentFrame);
         if (!hold)
         {
-            for (int i = 0; i < AGENT_COUNT; i++)
+            for (int i = 0; i < THREAD_COUNT; i++)
             {
-                agents[i].move(currentFrameImage);
+                int failed = pthread_create(&threadPool[i], NULL, moveThreaded, &i);
+                if (failed)
+                {
+                    printf("Error: unnable to create thread:%d\n", i);
+                    exit(-1);
+                }
+            }
+            for (int i = 0; i < THREAD_COUNT; i++)
+            {
+                int failed = pthread_join(threadPool[i], NULL);
+                if (failed)
+                {
+                    printf("Error: unnable to join thread:%d\n", i);
+                    exit(-1);
+                }
             }
         }
         currentFrame.draw(evaporation_filter);
-        for (int i = 0; i < AGENT_COUNT; i++)
-        {
-            agents[i].draw(currentFrame);
-        }
-        // for (int i = 0; i < DVD_COUNT; i++)
-        //     ds[i].draw(currentFrame);
+        currentFrame.draw(agentCells);
         diffusion_shader.setUniform("resolution", Vector2f(WINDOW_WIDTH, WINDOW_HEIGHT));
         diffusion_shader.setUniform("texture", currentFrame.getTexture());
         diffusionLayer.draw(Sprite(currentFrame.getTexture()), &diffusion_shader);
-        // window.clear(Color::White);
+        // Uncomment next for stable patterns
+        // for (int i = 0; i < AGENT_COUNT; i++)
+        // {
+        //     agents[i].draw(diffusionLayer);
+        // }
+        //  window.clear(Color::White);
         window.clear();
         window.draw(Sprite(diffusionLayer.getTexture()));
         window.display();
@@ -146,13 +151,19 @@ void init()
     currentFrameImage = diffusionLayer.getTexture().copyToImage();
     evaporation_filter = RectangleShape();
     evaporation_filter.setSize(Vector2f(WINDOW_WIDTH, WINDOW_HEIGHT));
-    evaporation_filter.setFillColor(Color(0, 0, 0, 40));
+    evaporation_filter.setFillColor(Color(0, 0, 0, 20));
     evaporation_filter.setPosition(Vector2f(0, 0));
     if (!diffusion_shader.loadFromFile("diffusion.frag", Shader::Fragment))
     {
         printf("Error Loading shader\n");
     }
 }
-void *updateThreaded(void *threadId)
+void *moveThreaded(void *threadId)
 {
+    int id = *((int *)threadId);
+    int lookupWindowWidth = (float)AGENT_COUNT / (float)THREAD_COUNT;
+    int start = lookupWindowWidth * id;
+    for (int i = start; i < (start + lookupWindowWidth) && i < AGENT_COUNT; i++)
+        agents[i].move(currentFrameImage);
+    pthread_exit(NULL);
 }

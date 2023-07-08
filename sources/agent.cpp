@@ -4,40 +4,28 @@ agent::agent()
     sprite = CircleShape();
     sprite.setFillColor(Color::Blue);
     sprite.setRadius(1);
-    velocity = Vector2f((rand() / (float)RAND_MAX) * ((float)MAX_SPEED * 2) - (float)MAX_SPEED, (rand() / (float)RAND_MAX) * ((float)MAX_SPEED * 2) - (float)MAX_SPEED);
+    velocity = Vector2f(((float)rand() / (float)RAND_MAX) * ((float)MAX_SPEED * 2) - (float)MAX_SPEED, ((float)rand() / (float)RAND_MAX) * ((float)MAX_SPEED * 2) - (float)MAX_SPEED);
     normalizeAndScale(velocity, MAX_SPEED);
     position = Vector2f(((float)rand() / RAND_MAX) * WINDOW_WIDTH, ((float)rand() / RAND_MAX) * WINDOW_HEIGHT);
     sprite.setPosition(Vector2f(position.x - 1, position.y - 1));
-    pheromoneChannel = 'B';
+    pheromoneColor = NULL;
+    linked_vertex = NULL;
 }
-agent::agent(Vector2f position, char pheromoneChannel)
+agent::agent(Vector2f position, Color *pheromoneChannel)
 {
     sprite = CircleShape();
     sprite.setRadius(1);
     sprite.setPosition(Vector2f(position.x - 1, position.y - 1));
-    velocity = Vector2f((rand() / (float)RAND_MAX) * ((float)MAX_SPEED * 2) - (float)MAX_SPEED, (rand() / (float)RAND_MAX) * ((float)MAX_SPEED * 2) - (float)MAX_SPEED);
+    velocity = Vector2f(((float)rand() / (float)RAND_MAX) * ((float)MAX_SPEED * 2) - (float)MAX_SPEED, ((float)rand() / (float)RAND_MAX) * ((float)MAX_SPEED * 2) - (float)MAX_SPEED);
     normalizeAndScale(velocity, MAX_SPEED);
-    this->pheromoneChannel = pheromoneChannel;
-    if (pheromoneChannel == 'R')
-        sprite.setFillColor(Color::Red);
-    else if (pheromoneChannel == 'G')
-        sprite.setFillColor(Color::Green);
-    else if (pheromoneChannel == 'B')
-        sprite.setFillColor(Color::Blue);
-    else
-        sprite.setFillColor(Color::White);
+    this->pheromoneColor = pheromoneColor;
+    this->sprite.setFillColor(*(this->pheromoneColor));
+    linked_vertex = NULL;
 }
-void agent::setPheromoneChannel(char pheromoneChannel)
+void agent::setPheromoneChannel(Color *pheromoneChannel)
 {
-    this->pheromoneChannel = pheromoneChannel;
-    if (pheromoneChannel == 'R')
-        sprite.setFillColor(Color::Red);
-    else if (pheromoneChannel == 'G')
-        sprite.setFillColor(Color::Green);
-    else if (pheromoneChannel == 'B')
-        sprite.setFillColor(Color::Blue);
-    else
-        sprite.setFillColor(Color::White);
+    this->pheromoneColor = pheromoneChannel;
+    this->sprite.setFillColor(*(this->pheromoneColor));
 }
 void agent::decideVelocityDirection(Image &frame)
 {
@@ -56,11 +44,19 @@ void agent::decideVelocityDirection(Image &frame)
         velocity = getNormalizedAndScaled(left, MAX_SPEED);
     else if (rightPher >= forwardPher && rightPher >= leftPher)
         velocity = getNormalizedAndScaled(right, MAX_SPEED);
-    if ((rand() / (float)RAND_MAX) < 0.3)
+    float turnChance = ((float)rand() / (float)RAND_MAX);
+    if (turnChance <= RAND_TURN_CHANCE)
     {
-        float angle = (float)(MAX_ANGLE - MIN_ANGLE) * (rand() / (float)RAND_MAX) + ((float)MIN_ANGLE) + 1;
+        float angle = (float)(MAX_ANGLE - MIN_ANGLE) * ((float)rand() / (float)RAND_MAX) + ((float)MIN_ANGLE) + 1;
         rotateDeg(velocity, angle);
     }
+}
+
+void agent::linkVertex(Vertex *vert)
+{
+    linked_vertex = vert;
+    linked_vertex->position = position;
+    linked_vertex->color = *pheromoneColor;
 }
 // Function To get the average value of a radius at the given pixel
 float agent::getRadiusValueAt(Vector2f pixelPos, Image &frame)
@@ -85,17 +81,17 @@ float agent::getRadiusValueAt(Vector2f pixelPos, Image &frame)
                 if (pixelY > WINDOW_HEIGHT)
                     pixelY = 1;
                 Color c = frame.getPixel(pixelX, pixelY);
-                float r = ((float)c.r) / 255.f;
-                float g = ((float)c.g) / 255.f;
-                float b = ((float)c.b) / 255.f;
-                if (pheromoneChannel == 'R')
-                    output += r;
-                else if (pheromoneChannel == 'G')
-                    output += g;
-                else if (pheromoneChannel == 'B')
-                    output += b;
+                Color pher;
+                if (pheromoneColor != NULL)
+                    pher = *(this->pheromoneColor);
                 else
-                    output += (float)(r + g + b) / 3.f;
+                    pher = Color::Blue;
+                float totalSumPher = pher.r + pher.g + pher.b;
+                float rWeight = (float)pher.r / totalSumPher;
+                float gWeight = (float)pher.g / totalSumPher;
+                float bWeight = (float)pher.b / totalSumPher;
+                float r = c.r, g = c.g, b = c.b;
+                output += ((r * rWeight) + (b * bWeight) + (g * gWeight)) / totalSumPher;
                 pixelCount++;
             }
         }
@@ -130,5 +126,8 @@ void agent::move(Image &frame)
     {
         position.y = 1;
     }
-    sprite.setPosition(Vector2f(position.x - 1, position.y - 1));
+    if (linked_vertex != NULL)
+        linked_vertex->position = position;
+    else
+        sprite.setPosition(Vector2f(position.x - 1, position.y - 1));
 }

@@ -15,7 +15,8 @@
                 "-lsfml-graphics",
                 "-lsfml-window",
                 "-lsfml-system",
-                "-lpthread"
+                "-lpthread",
+                "-O3"
             ],
             "options": {
                 "cwd": "${fileDirname}"
