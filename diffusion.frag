@@ -1,7 +1,7 @@
 uniform sampler2D texture;
 uniform vec2 resolution;
 
-const int blurRadius=2;
+const int blurRadius=4;
 
 void main()
 {

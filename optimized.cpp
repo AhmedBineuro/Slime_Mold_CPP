@@ -1,18 +1,18 @@
 #include "core.h"
 #include "vectorMath.h"
-#define AGENT_COUNT 1000000
+#define AGENT_COUNT 100000
 #define SENSOR_DIST 10
 #define SENSOR_RADIUS 4
 #define SENSOR_ANGLE 15
 #define MIN_ANGLE -90
 #define MAX_ANGLE 90
 #define MAX_SPEED 2
-#define RAND_TURN_CHANCE 0.3f
+#define RAND_TURN_CHANCE 0.4f
 #define DEFAULT_PHER Color::Blue
 #define THREAD_COUNT 12
 #define PHEROMONE_COUNT 3
 using namespace vecm;
-Color pheromones[PHEROMONE_COUNT] = {Color::Blue, Color::Red, Color::Green};
+Color pheromones[PHEROMONE_COUNT] = {Color::Red, Color::Green, Color::Blue};
 string WINDOW_TITLE;
 Image currentFrameImage;
 bool run;
@@ -25,23 +25,28 @@ pthread_t threadPool[THREAD_COUNT];
 Time elapsedUpdateTime = Time::Zero;
 RectangleShape evaporation_filter;
 Shader diffusion_shader;
-RenderWindow window(VideoMode(WINDOW_WIDTH, WINDOW_HEIGHT), WINDOW_TITLE);
+Texture currentTexture;
+Sprite nextFrameSprite;
+RenderWindow window;
 Vector2f velocities[AGENT_COUNT];
 VertexArray agentCells;
 void init();
 void *moveThreaded(void *threadId);
-void decideDirection(int agentIndex);
-void move(int agentIndex);
-float getRadiusValueAt(Vector2f position, int agentIndex);
+void decideDirection(int &agentIndex);
+void move(int &agentIndex);
+float getRadiusValueAt(Vector2f position, int &agentIndex);
 int main()
 {
     srand(time(NULL));
+    // window.create(VideoMode(WINDOW_WIDTH, WINDOW_HEIGHT), WINDOW_TITLE, Style::Fullscreen);
+    window.create(VideoMode(WINDOW_WIDTH, WINDOW_HEIGHT), WINDOW_TITLE);
     agentCells = VertexArray(Points, AGENT_COUNT);
     init();
     window.setPosition(Vector2(0, 0));
     bool hold = false;
     unsigned int frameCount = 0;
     /////////////////
+    diffusion_shader.setUniform("resolution", Vector2f(WINDOW_WIDTH, WINDOW_HEIGHT));
     while (run)
     {
         Event event;
@@ -112,14 +117,15 @@ int main()
         }
         currentFrame.draw(evaporation_filter);
         currentFrame.draw(agentCells);
-        diffusion_shader.setUniform("resolution", Vector2f(WINDOW_WIDTH, WINDOW_HEIGHT));
-        diffusion_shader.setUniform("texture", currentFrame.getTexture());
+        currentTexture = currentFrame.getTexture();
+        diffusion_shader.setUniform("texture", currentTexture);
         diffusionLayer.draw(Sprite(currentFrame.getTexture()), &diffusion_shader);
+        nextFrameSprite = Sprite(diffusionLayer.getTexture());
         window.clear();
-        window.draw(Sprite(diffusionLayer.getTexture()));
+        window.draw(nextFrameSprite);
         window.display();
-        currentFrame.draw(Sprite(diffusionLayer.getTexture()));
-        currentFrameImage = diffusionLayer.getTexture().copyToImage();
+        currentFrame.draw(nextFrameSprite);
+        currentFrameImage = nextFrameSprite.getTexture()->copyToImage();
     }
     window.close();
     return 0;
@@ -130,6 +136,7 @@ void init()
     WINDOW_TITLE = "Slime Mold Workshop";
     run = true;
     diffusionLayer.create(WINDOW_WIDTH, WINDOW_HEIGHT);
+    diffusionLayer.setRepeated(true);
     currentFrame.create(WINDOW_WIDTH, WINDOW_HEIGHT);
     currentFrameImage = diffusionLayer.getTexture().copyToImage();
     evaporation_filter = RectangleShape();
@@ -146,6 +153,8 @@ void init()
         agentCells[i] = Vertex(Vector2f(((float)rand() / RAND_MAX) * WINDOW_WIDTH, ((float)rand() / RAND_MAX) * WINDOW_HEIGHT));
         agentCells[i].color = pheromones[(i % 3)];
     }
+    currentTexture = currentFrame.getTexture();
+    nextFrameSprite = Sprite(currentTexture);
 }
 void *moveThreaded(void *threadId)
 {
@@ -157,7 +166,7 @@ void *moveThreaded(void *threadId)
     pthread_exit(NULL);
 }
 // Function To get the average value of a radius at the given pixel
-float getRadiusValueAt(Vector2f pixelPos, int agentIndex)
+float getRadiusValueAt(Vector2f pixelPos, int &agentIndex)
 {
     float output = 0;
     int pixelCount = 0;
@@ -165,34 +174,30 @@ float getRadiusValueAt(Vector2f pixelPos, int agentIndex)
     {
         for (int j = pixelPos.x - SENSOR_RADIUS; j < pixelPos.x + SENSOR_RADIUS; j++)
         {
-            float mag = sqrt(((i - pixelPos.y) * (i - pixelPos.y)) + ((j - pixelPos.x) * (j - pixelPos.x)));
-            if (mag <= SENSOR_RADIUS)
-            {
-                int pixelX = j;
-                int pixelY = i;
-                if (pixelX < 0)
-                    pixelX = WINDOW_WIDTH - 1;
-                if (pixelX > WINDOW_WIDTH)
-                    pixelX = 1;
-                if (pixelY < 0)
-                    pixelY = WINDOW_HEIGHT - 1;
-                if (pixelY > WINDOW_HEIGHT)
-                    pixelY = 1;
-                Color c = currentFrameImage.getPixel(pixelX, pixelY);
-                Color pher = agentCells[agentIndex].color;
-                float totalSumPher = pher.r + pher.g + pher.b;
-                float rWeight = (float)pher.r / totalSumPher;
-                float gWeight = (float)pher.g / totalSumPher;
-                float bWeight = (float)pher.b / totalSumPher;
-                float r = c.r, g = c.g, b = c.b;
-                output += ((r * rWeight) + (b * bWeight) + (g * gWeight)) / totalSumPher;
-                pixelCount++;
-            }
+            int pixelX = j;
+            int pixelY = i;
+            if (pixelX < 0)
+                pixelX = WINDOW_WIDTH - 1;
+            if (pixelX > WINDOW_WIDTH)
+                pixelX = 1;
+            if (pixelY < 0)
+                pixelY = WINDOW_HEIGHT - 1;
+            if (pixelY > WINDOW_HEIGHT)
+                pixelY = 1;
+            Color c = currentFrameImage.getPixel(pixelX, pixelY);
+            Color pher = agentCells[agentIndex].color;
+            float totalSumPher = pher.r + pher.g + pher.b;
+            float rWeight = (float)pher.r / totalSumPher;
+            float gWeight = (float)pher.g / totalSumPher;
+            float bWeight = (float)pher.b / totalSumPher;
+            float r = c.r, g = c.g, b = c.b;
+            output += ((r * rWeight) + (b * bWeight) + (g * gWeight)) / totalSumPher;
+            pixelCount++;
         }
     }
     return output;
 }
-void decideDirection(int agentIndex)
+void decideDirection(int &agentIndex)
 {
     Vector2f position = agentCells[agentIndex].position;
     Vector2f forward = velocities[agentIndex];
@@ -218,26 +223,24 @@ void decideDirection(int agentIndex)
     }
     return;
 }
-void move(int agentIndex)
+void move(int &agentIndex)
 {
     decideDirection(agentIndex);
-    Vector2f position = agentCells[agentIndex].position;
-    position += velocities[agentIndex];
-    if (position.x < 0)
+    agentCells[agentIndex].position += velocities[agentIndex];
+    if (agentCells[agentIndex].position.x < 0)
     {
-        position.x = WINDOW_WIDTH - 1;
+        agentCells[agentIndex].position.x = WINDOW_WIDTH - 1;
     }
-    else if (position.x > WINDOW_WIDTH)
+    else if (agentCells[agentIndex].position.x > WINDOW_WIDTH)
     {
-        position.x = 1;
+        agentCells[agentIndex].position.x = 1;
     }
-    if (position.y < 0)
+    if (agentCells[agentIndex].position.y < 0)
     {
-        position.y = WINDOW_HEIGHT - 1;
+        agentCells[agentIndex].position.y = WINDOW_HEIGHT - 1;
     }
-    else if (position.y > WINDOW_HEIGHT)
+    else if (agentCells[agentIndex].position.y > WINDOW_HEIGHT)
     {
-        position.y = 1;
+        agentCells[agentIndex].position.y = 1;
     }
-    agentCells[agentIndex].position = position;
 }
