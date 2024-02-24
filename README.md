@@ -20,6 +20,4 @@
 g++ optimized.cpp ./sources/*.cpp -o SlimeMold -I./includes -lsfml-graphics -lsfml-window -lsfml-system -O3
 ```
 ## Cool Patterns Generated
-- [Blue and yellow slime mold](./blueNyellow.png)
-- [Fleshy looking slime mold](./fleshmold.png)
-- [Red, green, and blue slime molds creating a web like pattern](./NEW_WEB_PATTERN.png)
+[Blue and yellow slime mold](./blueNyellow.png)
