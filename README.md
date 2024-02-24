@@ -1,7 +1,7 @@
 # Slime mold simulation, now in C++!
 - This is a port of the Python version of this simulation I made! [(Check out here)](https://github.com/AhmedBineuro/SlimeMold)
 - This port uses C++ (of course) as well as [SFML](https://www.sfml-dev.org/) graphics library to improve the performance of the simulation
-![Updated Slime Mold demo](Updated_Slime_Mold.mov)
+![Updated Slime Mold demo](Updated_Slime_Mold.gif)
 ## Main Improvements
 - Shifting from Python to C++ gave the expected boost in performance
 - Simplifying the code a lot more
